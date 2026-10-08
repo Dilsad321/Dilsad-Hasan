@@ -2,16 +2,41 @@ package com.example.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
+import com.example.R
+import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-class ShopRepository(context: Context) {
+private const val TAG = "ShopRepository"
+
+class ShopRepository(private val context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("tamim_online_prefs", Context.MODE_PRIVATE)
+
+    private val firestoreDb: FirebaseFirestore? by lazy {
+        try {
+            val dbId = context.applicationContext.getString(R.string.firestore_database_id)
+            FirebaseFirestore.getInstance(FirebaseApp.getInstance(), dbId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to initialize custom Firestore instance: ${e.message}")
+            null
+        }
+    }
+
+    private var firestoreListener: ListenerRegistration? = null
 
     // Complete list of all 9 shop services
     val allServices: List<ShopService> = listOf(
@@ -165,6 +190,54 @@ class ShopRepository(context: Context) {
 
     init {
         loadWorkRecords()
+        startFirestoreSyncIfAuthenticated()
+    }
+
+    fun startFirestoreSyncIfAuthenticated() {
+        val user = Firebase.auth.currentUser
+        if (user == null || firestoreDb == null) {
+            return
+        }
+
+        firestoreListener?.remove()
+        try {
+            firestoreListener = firestoreDb?.collection("work_records")
+                ?.addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e(TAG, "Firestore sync error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        val remoteList = mutableListOf<WorkStatusRecord>()
+                        for (doc in snapshot.documents) {
+                            val token = doc.getString("token") ?: doc.id
+                            val name = doc.getString("name") ?: ""
+                            val phone = doc.getString("phone") ?: ""
+                            val service = doc.getString("service") ?: ""
+                            val stage = doc.getLong("stage")?.toInt() ?: 1
+                            val date = doc.getString("date") ?: "আজ"
+                            val note = doc.getString("note") ?: ""
+                            remoteList.add(
+                                WorkStatusRecord(
+                                    token = token,
+                                    name = name,
+                                    phone = phone,
+                                    service = service,
+                                    stage = stage,
+                                    date = date,
+                                    note = note
+                                )
+                            )
+                        }
+                        if (remoteList.isNotEmpty()) {
+                            _workRecords.value = remoteList
+                            saveWorkRecords(remoteList)
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to attach snapshot listener", e)
+        }
     }
 
     private fun loadWorkRecords() {
@@ -252,8 +325,9 @@ class ShopRepository(context: Context) {
     fun addWorkRecord(name: String, phone: String, service: String, stage: Int, note: String): WorkStatusRecord {
         val current = _workRecords.value
         val nextNumber = 101 + current.size
+        val token = "TOC-$nextNumber"
         val newRecord = WorkStatusRecord(
-            token = "TOC-$nextNumber",
+            token = token,
             name = name.trim(),
             phone = phone.trim(),
             service = service.trim(),
@@ -264,6 +338,28 @@ class ShopRepository(context: Context) {
         val updated = listOf(newRecord) + current
         _workRecords.value = updated
         saveWorkRecords(updated)
+
+        // Sync to Firestore if authenticated
+        val user = Firebase.auth.currentUser
+        if (user != null && firestoreDb != null) {
+            val data = hashMapOf(
+                "token" to token,
+                "name" to newRecord.name,
+                "phone" to newRecord.phone,
+                "service" to newRecord.service,
+                "stage" to newRecord.stage,
+                "date" to newRecord.date,
+                "note" to newRecord.note,
+                "userId" to user.uid,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            firestoreDb?.collection("work_records")?.document(token)?.set(data)
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to upload work record to Firestore", e)
+                }
+        }
+
         return newRecord
     }
 
@@ -278,12 +374,35 @@ class ShopRepository(context: Context) {
         }
         _workRecords.value = updated
         saveWorkRecords(updated)
+
+        // Sync to Firestore if authenticated
+        val user = Firebase.auth.currentUser
+        if (user != null && firestoreDb != null) {
+            val updates = hashMapOf<String, Any>(
+                "stage" to newStage,
+                "note" to (updated.find { it.token == token }?.note ?: ""),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            firestoreDb?.collection("work_records")?.document(token)?.update(updates)
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to update record in Firestore", e)
+                }
+        }
     }
 
     fun deleteWorkRecord(token: String) {
         val updated = _workRecords.value.filter { it.token != token }
         _workRecords.value = updated
         saveWorkRecords(updated)
+
+        // Delete from Firestore
+        val user = Firebase.auth.currentUser
+        if (user != null && firestoreDb != null) {
+            firestoreDb?.collection("work_records")?.document(token)?.delete()
+                ?.addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to delete record in Firestore", e)
+                }
+        }
     }
 
     // Smart Bot response helper

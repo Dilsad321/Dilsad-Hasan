@@ -81,6 +81,8 @@ enum class AppTab(val titleBn: String, val testId: String) {
 @Composable
 fun TamimOnlineApp(
     repository: ShopRepository,
+    currentUser: com.google.firebase.auth.FirebaseUser? = null,
+    onSignOut: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -379,6 +381,8 @@ fun TamimOnlineApp(
                     }
                     AppTab.CONTACT -> {
                         ContactScreen(
+                            currentUser = currentUser,
+                            onSignOut = onSignOut,
                             onCallPhone = { makePhoneCall() },
                             onOpenWhatsApp = { openWhatsAppChat("নমস্কার তামিম অনলাইন সেন্টার") },
                             onOpenMap = { openMapLocation() }

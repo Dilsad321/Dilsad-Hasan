@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'mi.dilsad@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidWorkRecord(data) {
+      return data.token is string && data.token.size() >= 3 && data.token.size() <= 32 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 25 &&
+             data['service'] is string && data['service'].size() >= 2 && data['service'].size() <= 100 &&
+             data.stage is int && data.stage >= 1 && data.stage <= 3 &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
+             data.userId is string && data.userId.size() <= 128;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 120 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('role' in data) || (data.role in ['admin', 'customer']));
+    }
+
+    // Customer Work Orders Collection
+    match /work_records/{recordId} {
+      allow get, list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(recordId) &&
+                       (incoming().userId == request.auth.uid || isAdmin()) &&
+                       incoming().keys().hasAll(['token', 'name', 'phone', 'service', 'stage', 'userId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['token', 'name', 'phone', 'service', 'stage', 'date', 'note', 'userId', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidWorkRecord(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(recordId) &&
+                       (existing().userId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (!('updatedAt' in incoming()) || (incoming().updatedAt is timestamp && incoming().updatedAt <= request.time)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'note', 'service', 'name', 'phone', 'date', 'updatedAt']) &&
+                       isValidWorkRecord(incoming());
+
+      allow delete: if isSignedIn() &&
+                       isValidId(recordId) &&
+                       (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // User Profiles Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'email', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (!('updatedAt' in incoming()) || (incoming().updatedAt is timestamp && incoming().updatedAt <= request.time)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+  }
+}

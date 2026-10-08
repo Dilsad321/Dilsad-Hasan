@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "WorkRecord": {
+      "title": "WorkRecord",
+      "description": "Represents a customer work order tracking entry at Tamim Online Centre.",
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Unique token identifier (e.g. TOC-101)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the customer."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the customer."
+        },
+        "service": {
+          "type": "string",
+          "description": "Service applied for."
+        },
+        "stage": {
+          "type": "integer",
+          "description": "Progress stage: 1 for submitted, 2 for processing, 3 for ready."
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of entry."
+        },
+        "note": {
+          "type": "string",
+          "description": "Remarks or notes regarding the work status."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner or manager user ID who entered the record."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp; clients must submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp; clients must submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["token", "name", "phone", "service", "stage", "userId", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Represents a user account in the app.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name."
+        },
+        "role": {
+          "type": "string",
+          "description": "Role: admin or customer.",
+          "enum": ["admin", "customer"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp; clients must submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp; clients must submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/work_records/{recordId}": {
+      "schema": {
+        "$ref": "#/entities/WorkRecord"
+      },
+      "description": "Collection of customer work orders."
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User profiles for authenticated accounts."
+    }
+  }
+}
