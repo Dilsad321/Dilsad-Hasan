@@ -1,0 +1,6 @@
+{
+  "name": "তামিম অনলাইন সেন্টার",
+  "description": "তামিম অনলাইন সেন্টার (মাড়গ্রাম, বীরভূম) - সরকারি CSC কমন সার্ভিস সেন্টার ও সাইবার ক্যাফে ডিজিটাল অ্যাপ। প্যান ও আধার কার্ড, AEPS ব্যাংকিং টাকা তোলা, PVC কার্ড প্রিন্ট, জমির পর্চা, ট্রেড লাইসেন্স, লাইভ কাজের স্ট্যাটাস ট্র্যাকার ও Google Pay UPI QR।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
